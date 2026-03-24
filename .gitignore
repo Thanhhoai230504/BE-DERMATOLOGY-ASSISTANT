@@ -1,6 +1,114 @@
+# Python
 venv/
+env/
+ENV/
+.venv
 __pycache__/
-*.ckpt
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# Machine Learning Models (Large Files)
 *.pt
+*.pth
+*.ckpt
+*.h5
+*.pkl
+*.pickle
+*.joblib
+weights/
+models/
+checkpoints/
+
+# Data Files
 *.xlsx
+*.xls
+*.csv
 *.parquet
+*.json
+*.jsonl
+*.feather
+data/
+datasets/
+raw_data/
+
+# Node/npm (Frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.cache
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+temp/
+tmp/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
