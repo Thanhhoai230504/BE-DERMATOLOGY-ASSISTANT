@@ -17,13 +17,16 @@ from ultralytics import YOLO
 import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 from huggingface_hub import hf_hub_download
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ========== Cấu hình API Key cho Gemini (bắt buộc set GEMINI_API_KEY khi deploy) ==========
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 model_name = "models/embedding-001"
-genai_model = genai.GenerativeModel("models/gemini-2.0-flash-exp") if API_KEY else None
+genai_model = genai.GenerativeModel("gemini-2.0-flash-lite") if API_KEY else None
 
 MODELS_REPO = os.environ.get("DERMATOLOGY_MODELS_REPO", "thanhhoai23/dermatology-models")
 QA_PARQUET_NAME = "qa_with_embeddings_data_all-MiniLM-L6-v2.parquet"
@@ -228,14 +231,35 @@ async def receive_question(data: Question):
     <document>{document}</document>
     """
 
-    try:
-        response = genai_model.generate_content(prompt)
-        return {"answer": response.text}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "error": str(e),
-            "answer": "Hệ thống hiện tại đang quá tải hoặc gặp lỗi. Vui lòng thử lại sau vài phút."
-        })
+    # Danh sách các model fallback (y hệt như Node.js)
+    MODELS = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
+
+    for model_name in MODELS:
+        try:
+            current_model = genai.GenerativeModel(model_name)
+            response = current_model.generate_content(prompt)
+            return {"answer": response.text}
+        except Exception as e:
+            error_str = str(e)
+            print(f"Chatbot [{model_name}] failed: {error_str[:80]}")
+            # Nếu không phải lỗi quota (429), thì trả về lỗi luôn thay vì thử model khác
+            if "429" not in error_str and "quota" not in error_str.lower():
+                return JSONResponse(status_code=500, content={
+                    "error": error_str,
+                    "answer": "Xin lỗi, tôi gặp sự cố khi xử lý. Vui lòng thử lại sau."
+                })
+            # Nếu là lỗi 429, bỏ qua và lặp tiếp sang model kế tiếp
+
+    # Nếu lặp qua hết tất cả các model mà vẫn lỗi 429
+    return JSONResponse(status_code=500, content={
+        "error": "Tất cả model đều đã hết quota",
+        "answer": "Hệ thống AI đang quá tải (Hết Quota tất cả model). Vui lòng thử lại sau vài phút."
+    })
 
 
 # API nhận ảnh và trả về dự đoán
