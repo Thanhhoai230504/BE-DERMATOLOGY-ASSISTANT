@@ -11,25 +11,52 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sklearn.metrics.pairwise import cosine_similarity
 from torchvision import transforms
-from transformers import ViTFeatureExtractor, ViTForImageClassification
+from transformers import ViTImageProcessor, ViTForImageClassification
 from pytorch_lightning import LightningModule
 from ultralytics import YOLO
 import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
+from huggingface_hub import hf_hub_download
 
-# ========== Cấu hình API Key cho Gemini ==========
-API_KEY = "AIzaSyCjJtRWnbs5owReG1-Im535iF8hBAnQYtM"
-genai.configure(api_key=API_KEY)
+# ========== Cấu hình API Key cho Gemini (bắt buộc set GEMINI_API_KEY khi deploy) ==========
+API_KEY = os.environ.get("GEMINI_API_KEY")
+if API_KEY:
+    genai.configure(api_key=API_KEY)
 model_name = "models/embedding-001"
-genai_model = genai.GenerativeModel('models/gemini-2.0-flash-exp')
+genai_model = genai.GenerativeModel("models/gemini-2.0-flash-exp") if API_KEY else None
+
+MODELS_REPO = os.environ.get("DERMATOLOGY_MODELS_REPO", "thanhhoai23/dermatology-models")
+QA_PARQUET_NAME = "qa_with_embeddings_data_all-MiniLM-L6-v2.parquet"
+
+
+def _resolve_qa_parquet_path() -> str:
+    override = os.environ.get("QA_PARQUET_PATH")
+    if override and os.path.isfile(override):
+        return override
+    if os.path.isfile(QA_PARQUET_NAME):
+        return QA_PARQUET_NAME
+    hf_name = os.environ.get("QA_PARQUET_HF_FILENAME", QA_PARQUET_NAME)
+    try:
+        return hf_hub_download(repo_id=MODELS_REPO, filename=hf_name)
+    except Exception as e:
+        raise RuntimeError(
+            f"Không tìm thấy dữ liệu Q&A parquet. Cách xử lý: (1) copy {QA_PARQUET_NAME} vào image, "
+            f"(2) set QA_PARQUET_PATH=/đường/dẫn/file.parquet, hoặc (3) upload file lên HF repo "
+            f"'{MODELS_REPO}' (filename={hf_name}) — repo private cần HF_TOKEN."
+        ) from e
+
 # Load sẵn mô hình YOLO
-yolo_model = YOLO("./best.pt")
+try:
+    yolo_model_path = hf_hub_download(repo_id=MODELS_REPO, filename="best.pt")
+except Exception as e:
+    yolo_model_path = "./best.pt"
+yolo_model = YOLO(yolo_model_path)
 
 # Khởi tạo model embedding local
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 # ========== Load dữ liệu ==========
-df = pd.read_parquet('qa_with_embeddings_data_all-MiniLM-L6-v2.parquet')
+df = pd.read_parquet(_resolve_qa_parquet_path())
 
 # ========== Khởi tạo FastAPI ==========
 app = FastAPI()
@@ -44,7 +71,10 @@ app.add_middleware(
     expose_headers=["X-Num-Acne", "X-Acne-Ratio", "X-Severity"]
 )
 # === Cấu hình ===
-model_ckpt = "vit-best.ckpt"
+try:
+    model_ckpt = hf_hub_download(repo_id=MODELS_REPO, filename="vit-best.ckpt")
+except Exception as e:
+    model_ckpt = "vit-best.ckpt"
 label_map = {
     0: "akiec",  # Actinic keratoses
     1: "bcc",    # Basal cell carcinoma
@@ -56,7 +86,7 @@ label_map = {
 }
 
 # === Feature extractor & Transform giống khi train ===
-extractor = ViTFeatureExtractor.from_pretrained("google/vit-base-patch16-224-in21k")
+extractor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -168,6 +198,15 @@ async def detect_acne(file: UploadFile = File(...)):
 # ========== Xử lý câu hỏi ========== (Gemini Q&A)
 @app.post("/ask")
 async def receive_question(data: Question):
+    if not genai_model:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "GEMINI_API_KEY chưa được cấu hình trên server.",
+                "answer": "Hệ thống Q&A chưa sẵn sàng. Vui lòng cấu hình biến môi trường GEMINI_API_KEY.",
+            },
+        )
+
     question = data.question
 
     question_embedding = embedder.encode(question).tolist()

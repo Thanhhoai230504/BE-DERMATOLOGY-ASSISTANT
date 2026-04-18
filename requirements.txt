@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+torch
+torchvision
+numpy
+pandas
+opencv-python-headless
+Pillow
+scikit-learn
+transformers
+pytorch-lightning
+ultralytics
+google-generativeai
+sentence-transformers
+pyarrow
